@@ -4,7 +4,7 @@ const cors = require("cors");
 const app = express();
 const port = process.env.PORT;
 
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = process.env.MONGODB_URI;
 
 app.use(cors());
@@ -26,11 +26,27 @@ async function run() {
     const db = client.db("study-nook");
     const roomsCollection = db.collection("rooms");
 
+    // Add Room
     app.post("/rooms", async (req, res) => {
       const roomData = req.body;
       console.log(roomData);
       const result = await roomsCollection.insertOne(roomData);
 
+      res.json(result);
+    });
+
+    // Get All Room
+    app.get("/rooms", async (req, res) => {
+      const roomData = req.body;
+
+      const result = await roomsCollection.find().toArray();
+      res.json(result);
+    });
+
+    // Get Single Room
+    app.get("/rooms/:roomId", async (req, res) => {
+      const { roomId } = req.params;
+      const result = await roomsCollection.findOne({ _id: new ObjectId(roomId) });
       res.json(result);
     });
 
