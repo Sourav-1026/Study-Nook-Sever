@@ -27,7 +27,7 @@ async function run() {
     const roomsCollection = db.collection("rooms");
     const bookingCollection = db.collection("bookings");
 
-    // Add Room
+    // Post Room
     app.post("/rooms", async (req, res) => {
       const roomData = req.body;
       console.log(roomData);
@@ -66,10 +66,25 @@ async function run() {
       res.json(result);
     });
 
-    // bookings api
+    //post bookings api
     app.post("/bookings", async (req, res) => {
       const bookingData = req.body;
       const result = await bookingCollection.insertOne(bookingData);
+      res.json(result);
+    });
+
+    // get booking api
+    app.get("/bookings/:userId", async (req, res) => {
+      const { userId } = req.params;
+      const result = await bookingCollection.find({ userId }).toArray();
+      res.json(result);
+    });
+
+    // patch booking api
+    app.patch("/bookings/:bookingId", async (req, res) => {
+      const { bookingId } = req.params;
+      const updatedData = req.body;
+      const result = await bookingCollection.updateOne({ _id: new ObjectId(bookingId) }, { $set: updatedData });
       res.json(result);
     });
 
