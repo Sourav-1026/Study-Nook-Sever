@@ -20,7 +20,7 @@ const client = new MongoClient(uri, {
   },
 });
 
-const JWKS = createRemoteJWKSet(new URL("http://localhost:3000/api/auth/jwks"));
+const JWKS = createRemoteJWKSet(new URL(`${process.env.CLIENT_URI}/api/auth/jwks`));
 
 const verifyToken = async (req, res, next) => {
   const authHeader = req?.headers.authorization;
@@ -45,7 +45,7 @@ const verifyToken = async (req, res, next) => {
 
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
 
     const db = client.db("study-nook");
     const roomsCollection = db.collection("rooms");
@@ -115,8 +115,25 @@ async function run() {
 
     //post bookings api
     app.post("/bookings", verifyToken, async (req, res) => {
-      const bookingData = req.body;
-      const result = await bookingCollection.insertOne(bookingData);
+      const { roomId, bookingDate, bookingStartHour, bookingEndHour } = req.body;
+
+      const conflict = await bookingCollection.findOne({
+        roomId,
+        bookingDate,
+        roomStatus: "Confirmed",
+        $or: [
+          {
+            bookingStartHour: { $lt: bookingEndHour },
+            bookingEndHour: { $gt: bookingStartHour },
+          },
+        ],
+      });
+
+      if (conflict) {
+        return res.status(409).json({ message: "This room is already booked for the selected time slot." });
+      }
+
+      const result = await bookingCollection.insertOne(req.body);
       res.json(result);
     });
 
@@ -135,7 +152,7 @@ async function run() {
       res.json(result);
     });
 
-    await client.db("admin").command({ ping: 1 });
+    // await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
     // Ensures that the client will close when you finish/error
