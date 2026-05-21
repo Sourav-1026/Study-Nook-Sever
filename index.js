@@ -5,6 +5,7 @@ const app = express();
 const port = process.env.PORT;
 
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const { createRemoteJWKSet, jwtVerify } = require("jose-cjs");
 const uri = process.env.MONGODB_URI;
 
 app.use(cors());
@@ -19,6 +20,29 @@ const client = new MongoClient(uri, {
   },
 });
 
+const JWKS = createRemoteJWKSet(new URL("http://localhost:3000/api/auth/jwks"));
+
+const verifyToken = async (req, res, next) => {
+  const authHeader = req?.headers.authorization;
+  // console.log(authHeader);
+  if (!authHeader) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  const token = authHeader.split(" ")[1];
+  if (!token) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  console.log(token);
+
+  try {
+    const { payload } = await jwtVerify(token, JWKS);
+    console.log(payload);
+    next();
+  } catch (error) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+};
+
 async function run() {
   try {
     await client.connect();
@@ -27,61 +51,84 @@ async function run() {
     const roomsCollection = db.collection("rooms");
     const bookingCollection = db.collection("bookings");
 
-    // Post Room
-    app.post("/rooms", async (req, res) => {
+    // Post Room api
+    app.post("/rooms", verifyToken, async (req, res) => {
       const roomData = req.body;
       console.log(roomData);
       const result = await roomsCollection.insertOne(roomData);
-
       res.json(result);
     });
 
-    // Get All Room
+    // Get All Room api
     app.get("/rooms", async (req, res) => {
-      const roomData = req.body;
+      const { search, amenities, maxRate, minRate } = req.query;
 
-      const result = await roomsCollection.find().toArray();
+      const query = {};
+
+      if (search) {
+        query.roomName = { $regex: search, $options: "i" };
+      }
+
+      if (amenities) {
+        query.amenities = { $all: amenities.split(",") };
+      }
+
+      if (minRate || maxRate) {
+        query.$expr = {
+          $and: [minRate ? { $gte: [{ $toDouble: "$rate" }, Number(minRate)] } : {}, maxRate ? { $lte: [{ $toDouble: "$rate" }, Number(maxRate)] } : {}].filter((obj) => Object.keys(obj).length > 0),
+        };
+      }
+
+      const result = await roomsCollection.find(query).toArray();
       res.json(result);
     });
 
-    // Get Single Room
-    app.get("/rooms/:roomId", async (req, res) => {
+    // get listing room api
+    app.get("/rooms/user/:userId", verifyToken, async (req, res) => {
+      const { userId } = req.params;
+      const result = await roomsCollection.find({ userId }).toArray();
+      res.json(result);
+    });
+
+    // Get Single Room api
+    app.get("/rooms/:roomId", verifyToken, async (req, res) => {
       const { roomId } = req.params;
       const result = await roomsCollection.findOne({ _id: new ObjectId(roomId) });
       res.json(result);
     });
 
-    // update room
-    app.patch("/rooms/:roomId", async (req, res) => {
+    // update room api
+    app.patch("/rooms/:roomId", verifyToken, async (req, res) => {
       const { roomId } = req.params;
       const updatedData = req.body;
       const result = await roomsCollection.updateOne({ _id: new ObjectId(roomId) }, { $set: updatedData });
       res.json(result);
     });
 
-    // delete room
-    app.delete("/rooms/:roomId", async (req, res) => {
+    // delete room api
+    app.delete("/rooms/:roomId", verifyToken, async (req, res) => {
       const { roomId } = req.params;
       const result = await roomsCollection.deleteOne({ _id: new ObjectId(roomId) });
+      const bookingResult = await bookingCollection.deleteMany({ roomId: roomId });
       res.json(result);
     });
 
     //post bookings api
-    app.post("/bookings", async (req, res) => {
+    app.post("/bookings", verifyToken, async (req, res) => {
       const bookingData = req.body;
       const result = await bookingCollection.insertOne(bookingData);
       res.json(result);
     });
 
     // get booking api
-    app.get("/bookings/:userId", async (req, res) => {
+    app.get("/bookings/:userId", verifyToken, async (req, res) => {
       const { userId } = req.params;
       const result = await bookingCollection.find({ userId }).toArray();
       res.json(result);
     });
 
     // patch booking api
-    app.patch("/bookings/:bookingId", async (req, res) => {
+    app.patch("/bookings/:bookingId", verifyToken, async (req, res) => {
       const { bookingId } = req.params;
       const updatedData = req.body;
       const result = await bookingCollection.updateOne({ _id: new ObjectId(bookingId) }, { $set: updatedData });
